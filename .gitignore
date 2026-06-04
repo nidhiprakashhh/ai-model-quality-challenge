@@ -1,0 +1,5 @@
+Evals/
+perf_data_files/
+venv/
+.DS_Store
+.env
