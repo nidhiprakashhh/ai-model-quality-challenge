@@ -1,0 +1,3 @@
+[submodule "task2/evalscope"]
+	path = task2/evalscope
+	url = https://github.com/nidhiprakashhh/evalscope.git
