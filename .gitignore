@@ -3,3 +3,4 @@ perf_data_files/
 venv/
 .DS_Store
 .env
+task2/mmmu_probe_outputs/
