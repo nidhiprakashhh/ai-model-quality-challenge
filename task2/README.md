@@ -4,6 +4,21 @@
 **Repo:** https://github.com/nidhiprakashhh/evalscope/tree/749b4daaa3ebc50bdf24e8450505b31d64f30aac  
 **Pinned SHA:** `573aef0e01b1e3f12c3678d3b7b8d0a17a43b56f`
 
+**Handouts:**
+- [handout_a.md](./handout_a.md) — "Why this works" (technical: algorithm rationale, LOO validation, Part B design, assumptions, what would change)
+- [handout_b.md](./handout_b.md) — "Why this matters" (sales/PM/customer: impact, how to run, what the probe tests vs random sampling)
+
+## The Approach
+
+The goal is not to approximate benchmark scores. It is to find the *smallest subset* that gives the same model ranking — and therefore the same go/no-go decision — as the full benchmark.
+
+**Why correlation-stratified pruning, not the obvious alternatives:**
+- **Random sampling** fails because ~65% of LCB items and ~57% of AA-LCR items have zero variance across models (all three models give the same answer). Random sampling picks these proportionally — preserving the noise, not the signal.
+- **Top-k hardest or easiest** fails because it overfits to difficulty level, missing that the discriminating items are specifically the ones where *strong models pass and weak models fail* — which requires cross-model variance, not just per-item difficulty.
+- **Hand-picking** obviously doesn't generalize to a fourth unseen model.
+
+The algorithm instead: stratifies by difficulty (so the pruned set is representative across easy/medium/hard), then within each bin selects the items with the highest cross-model variance *and* positive correlation with the full-set ranking (high variance alone can invert the ranking if a weak model happens to be strong on those specific items). For AA-LCR, a judge-noise correction step down-weights items where LLM-judge non-determinism dominates the cross-model signal. Full algorithm walk-through in [handout_a.md](./handout_a.md).
+
 ## Setup
 
 ```bash
