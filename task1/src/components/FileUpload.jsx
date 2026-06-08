@@ -40,11 +40,11 @@ export default function FileUpload({ onUpload }) {
       />
       <button
         onClick={() => inputRef.current?.click()}
-        className="px-4 py-2 bg-[#FF4B00] text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors"
+        className="px-4 py-2 bg-[#E07A5F] text-white text-sm font-medium rounded-lg hover:bg-[#C9614A] transition-colors"
       >
         Upload Model Sweep
       </button>
-      <span className="text-gray-400 text-xs">
+      <span className="text-[#403D39] text-sm font-medium">
         or drag & drop .xlsx files
       </span>
     </div>

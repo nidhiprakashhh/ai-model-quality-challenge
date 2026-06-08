@@ -10,13 +10,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { detectAnomalies } from "../utils/anomalyDetection";
+import { PROFILE_METADATA } from "../utils/dataModel";
 import ProfileSelector from "./ProfileSelector";
 
 const ALL_COLUMNS = [
   "Batch Size",
-  "Input Length",
-  "Output Length",
-  "Cache %",
   "TTFT (ms)",
   "Gen Speed (t/s/user)",
   "RPM",
@@ -34,25 +32,15 @@ const ALL_COLUMNS = [
   "Target Max number of milliseconds",
 ];
 
-// Distinct colors for up to 11 models
 const MODEL_COLORS = [
-  "#FF4B00", "#1a1a1a", "#2563eb", "#16a34a",
-  "#9333ea", "#dc2626", "#0891b2", "#d97706",
+  "#E07A5F", "#252422", "#2563eb", "#4A7C59",
+  "#9333ea", "#C0392B", "#0891b2", "#B8860B",
   "#db2777", "#65a30d", "#7c3aed",
 ];
 
-function AnomalyBadge({ anomaly }) {
-  return (
-    <div className="flex items-start gap-2 bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm">
-      <span className="text-yellow-500 mt-0.5">⚠</span>
-      <span className="text-yellow-800">{anomaly.message}</span>
-    </div>
-  );
-}
-
 function DataTable({ data }) {
   if (!data || data.length === 0) return (
-    <p className="text-sm text-gray-400 py-4">
+    <p className="text-sm text-[#403D39] py-4">
       No data for this configuration.
     </p>
   );
@@ -61,7 +49,7 @@ function DataTable({ data }) {
     <div className="overflow-x-auto">
       <table className="text-xs w-full border-collapse">
         <thead>
-          <tr className="bg-black text-white">
+          <tr className="bg-[#252422] text-white">
             {ALL_COLUMNS.map(col => (
               <th
                 key={col}
@@ -76,10 +64,10 @@ function DataTable({ data }) {
           {data.map((row, i) => (
             <tr
               key={i}
-              className={i % 2 === 0 ? "bg-white" : "bg-[#F5F0E8]"}
+              className={i % 2 === 0 ? "bg-white" : "bg-[#F9F7F4]"}
             >
               {ALL_COLUMNS.map(col => (
-                <td key={col} className="px-3 py-2 whitespace-nowrap text-gray-700">
+                <td key={col} className="px-3 py-2 whitespace-nowrap text-[#403D39]">
                   {row[col] !== null && row[col] !== undefined
                     ? typeof row[col] === "number"
                       ? row[col].toLocaleString(undefined, { maximumFractionDigits: 2 })
@@ -114,21 +102,24 @@ function ChartSection({ groupedData, selectedModels, selectedProfile }) {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-      {/* Gen Speed Chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h4 className="font-semibold text-black mb-4">
+      <div
+        className="bg-white rounded-xl border border-[#E8E2D9] p-5"
+        style={{ boxShadow: '0 1px 4px rgba(37,34,34,0.06)' }}
+      >
+        <h4 className="font-semibold text-[#252422] mb-4">
           Gen Speed (tok/s) vs Batch Size
         </h4>
         <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 40 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E8E2D9" />
             <XAxis
               dataKey="batchSize"
               label={{ value: "Batch Size", position: "insideBottom", offset: -5 }}
+              tick={{ fill: '#403D39', fontSize: 11 }}
             />
-            <YAxis />
+            <YAxis tick={{ fill: '#403D39', fontSize: 11 }} />
             <Tooltip formatter={(val) => val?.toFixed(1)} />
-            <Legend />
+            <Legend wrapperStyle={{ paddingTop: '10px', bottom: 0 }} />
             {selectedModels.map((modelName, i) => (
               <Line
                 key={modelName}
@@ -144,27 +135,30 @@ function ChartSection({ groupedData, selectedModels, selectedProfile }) {
           </LineChart>
         </ResponsiveContainer>
         {chartData.length === 1 && (
-          <p className="text-xs text-gray-400 mt-2 text-center">
+          <p className="text-xs text-[#403D39] mt-2 text-center">
             Single data point — this profile does not support batch scaling.
           </p>
         )}
       </div>
 
-      {/* TTFT Chart */}
-      <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <h4 className="font-semibold text-black mb-4">
+      <div
+        className="bg-white rounded-xl border border-[#E8E2D9] p-5"
+        style={{ boxShadow: '0 1px 4px rgba(37,34,34,0.06)' }}
+      >
+        <h4 className="font-semibold text-[#252422] mb-4">
           TTFT (ms) vs Batch Size
         </h4>
         <ResponsiveContainer width="100%" height={250}>
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+          <LineChart data={chartData} margin={{ top: 10, right: 20, left: 10, bottom: 40 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E8E2D9" />
             <XAxis
               dataKey="batchSize"
               label={{ value: "Batch Size", position: "insideBottom", offset: -5 }}
+              tick={{ fill: '#403D39', fontSize: 11 }}
             />
-            <YAxis />
+            <YAxis tick={{ fill: '#403D39', fontSize: 11 }} />
             <Tooltip formatter={(val) => val?.toFixed(1)} />
-            <Legend />
+            <Legend wrapperStyle={{ paddingTop: '10px', bottom: 0 }} />
             {selectedModels.map((modelName, i) => (
               <Line
                 key={modelName}
@@ -180,7 +174,7 @@ function ChartSection({ groupedData, selectedModels, selectedProfile }) {
           </LineChart>
         </ResponsiveContainer>
         {chartData.length === 1 && (
-          <p className="text-xs text-gray-400 mt-2 text-center">
+          <p className="text-xs text-[#403D39] mt-2 text-center">
             Single data point — this profile does not support batch scaling.
           </p>
         )}
@@ -196,8 +190,15 @@ export default function EngineerView({
   onProfileChange,
 }) {
   const [expandedModel, setExpandedModel] = useState(null);
+  const [collapsedModels, setCollapsedModels] = useState({});
 
-  // Collect anomalies for all selected models
+  function toggleModelCollapse(modelName) {
+    setCollapsedModels(prev => ({
+      ...prev,
+      [modelName]: !prev[modelName],
+    }));
+  }
+
   const allAnomalies = selectedModels.flatMap(modelName => {
     const profilesData = groupedData[modelName] ?? {};
     return detectAnomalies(profilesData).map(a => ({
@@ -206,41 +207,71 @@ export default function EngineerView({
     }));
   });
 
+  const anomaliesByModel = allAnomalies.reduce((acc, a) => {
+    if (!acc[a.modelName]) acc[a.modelName] = [];
+    acc[a.modelName].push(a);
+    return acc;
+  }, {});
+
   return (
     <div className="space-y-6">
       {/* Profile Selector */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <div
+        className="bg-white rounded-xl border border-[#E8E2D9] p-5"
+        style={{ boxShadow: '0 1px 4px rgba(37,34,34,0.06)' }}
+      >
         <ProfileSelector
           selectedProfile={selectedProfile}
           onProfileChange={onProfileChange}
         />
-        <p className="text-sm text-gray-500 mt-2">
+        <p className="text-sm text-[#403D39] mt-2">
           Showing all batch sizes — select a profile to filter by workload type.
         </p>
       </div>
 
       {/* Anomaly Flags */}
       {allAnomalies.length > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-yellow-200 p-5">
-          <div className="mb-3">
-            <h3 className="font-semibold text-black flex items-center gap-2">
-              <span className="text-yellow-500">⚠</span>
+        <div
+          className="bg-white rounded-xl border border-[#E8E2D9] p-5 space-y-2"
+          style={{ boxShadow: '0 1px 4px rgba(37,34,34,0.06)' }}
+        >
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-yellow-600">⚠</span>
+            <h3 className="font-semibold text-[#252422]">
               Anomalies Detected ({allAnomalies.length})
             </h3>
-            <p className="text-xs text-gray-500 mt-1 ml-5">
+            <span className="text-xs text-[#403D39]">
               Flagged across all traffic profiles for selected models.
-            </p>
+            </span>
           </div>
-          <div className="space-y-2">
-            {allAnomalies.map((anomaly, i) => (
-              <div key={i}>
-                <span className="text-xs font-medium text-gray-500 mb-1 block">
-                  {anomaly.modelName}
-                </span>
-                <AnomalyBadge anomaly={anomaly} />
-              </div>
-            ))}
-          </div>
+          {Object.entries(anomaliesByModel).map(([modelName, modelAnomalies]) => (
+            <div key={modelName} className="border border-[#E8E2D9] rounded-lg overflow-hidden">
+              <button
+                onClick={() => toggleModelCollapse(modelName)}
+                className="w-full flex items-center justify-between px-4 py-2.5 bg-[#F9F7F4] hover:bg-[#F4F1DE] transition-colors text-left"
+              >
+                <span className="text-sm font-medium text-[#252422]">{modelName}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-[#403D39]">
+                    {modelAnomalies.length} issue{modelAnomalies.length !== 1 ? 's' : ''}
+                  </span>
+                  <span className="text-[#403D39] text-xs">
+                    {collapsedModels[modelName] ? '▶' : '▼'}
+                  </span>
+                </div>
+              </button>
+              {!collapsedModels[modelName] && (
+                <div className="divide-y divide-[#F4F1DE]">
+                  {modelAnomalies.map((anomaly, i) => (
+                    <div key={i} className="flex items-start gap-2.5 px-4 py-2.5">
+                      <span className="text-yellow-500 text-xs mt-0.5">⚠</span>
+                      <span className="text-sm text-[#403D39]">{anomaly.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -260,23 +291,40 @@ export default function EngineerView({
           return (
             <div
               key={modelName}
-              className="bg-white rounded-xl shadow-sm border border-gray-200"
+              className="bg-white rounded-xl border border-[#E8E2D9]"
+              style={{ boxShadow: '0 1px 4px rgba(37,34,34,0.06)' }}
             >
               <button
-                onClick={() =>
-                  setExpandedModel(isExpanded ? null : modelName)
-                }
-                className="w-full flex items-center justify-between px-5 py-4 text-left"
+                onClick={() => setExpandedModel(isExpanded ? null : modelName)}
+                className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-[#F9F7F4] rounded-xl transition-colors"
               >
-                <span className="font-semibold text-black">{modelName}</span>
-                <span className="text-gray-400 text-sm">
+                <span className="font-semibold text-[#252422]">{modelName}</span>
+                <span className="text-[#403D39] text-sm">
                   {isExpanded ? "▲ Hide" : "▼ Show full data"}
                 </span>
               </button>
 
               {isExpanded && (
-                <div className="border-t border-gray-100 p-5">
-                  <DataTable data={profileData} modelName={modelName} />
+                <div className="border-t border-[#E8E2D9] p-5">
+                  {PROFILE_METADATA[selectedProfile] && (
+                    <div style={{
+                      fontSize: '13px',
+                      color: '#403D39',
+                      fontWeight: 500,
+                      marginBottom: '12px',
+                      padding: '8px 12px',
+                      background: '#F4F1DE',
+                      borderRadius: '8px',
+                    }}>
+                      Profile spec:{' '}
+                      {PROFILE_METADATA[selectedProfile].inputLength.toLocaleString()} input tokens
+                      {' · '}
+                      {PROFILE_METADATA[selectedProfile].outputLength.toLocaleString()} output tokens
+                      {' · '}
+                      {PROFILE_METADATA[selectedProfile].cachePercent * 100}% cache
+                    </div>
+                  )}
+                  <DataTable data={profileData} />
                 </div>
               )}
             </div>

@@ -2,37 +2,44 @@ import { CUSTOMER_METRICS, PROFILE_METADATA, getGoNoGoStatus, getDataPoint, getB
 import ProfileSelector from "./ProfileSelector";
 
 const STATUS_COLORS = {
-  green: "bg-green-100 border-green-400 text-green-800",
-  yellow: "bg-yellow-100 border-yellow-400 text-yellow-800",
-  red: "bg-red-100 border-red-400 text-red-800",
-  unknown: "bg-gray-100 border-gray-300 text-gray-600",
+  green:   "bg-[#EDF7F0] border-[#4A7C59] text-[#4A7C59]",
+  yellow:  "bg-[#FEFCE8] border-[#B8860B] text-[#B8860B]",
+  red:     "bg-[#FEF2F0] border-[#C0392B] text-[#C0392B]",
+  unknown: "bg-[#F9F7F4] border-[#E8E2D9] text-[#403D39]",
 };
 
 const STATUS_LABELS = {
-  green: "✓ Meets requirement",
-  yellow: "⚠ Borderline",
-  red: "✗ Does not meet requirement",
+  green:   "✓ Meets requirement",
+  yellow:  "⚠ Borderline",
+  red:     "✗ Does not meet requirement",
   unknown: "No data",
 };
 
 const STATUS_DOT = {
-  green: "bg-green-500",
-  yellow: "bg-yellow-500",
-  red: "bg-red-500",
-  unknown: "bg-gray-400",
+  green:   "bg-[#4A7C59]",
+  yellow:  "bg-[#B8860B]",
+  red:     "bg-[#C0392B]",
+  unknown: "bg-[#C4B9AE]",
 };
 
 function MetricCard({ metricKey, label, value, status }) {
   return (
-    <div className={`rounded-lg border-2 p-4 ${STATUS_COLORS[status]}`}>
-      <div className="text-xs font-medium uppercase tracking-wide opacity-70 mb-1">
+    <div className={`rounded-lg border p-3 relative ${STATUS_COLORS[status]}`}>
+      <span className={`absolute top-2 right-2 w-2 h-2 rounded-full ${STATUS_DOT[status]}`} />
+      <div style={{
+        fontSize: '11px',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '0.08em',
+        marginBottom: '4px',
+        color: 'inherit',
+      }}>
         {label}
       </div>
-      <div className="text-2xl font-bold mb-1">
+      <div style={{ fontSize: '22px', fontWeight: 700, marginBottom: '4px' }}>
         {formatMetricValue(metricKey, value)}
       </div>
-      <div className="flex items-center gap-1 text-xs">
-        <span className={`w-2 h-2 rounded-full inline-block ${STATUS_DOT[status]}`} />
+      <div style={{ fontSize: '11px', fontWeight: 500 }}>
         {STATUS_LABELS[status]}
       </div>
     </div>
@@ -47,19 +54,38 @@ function ModelCard({ modelName, dataPoint, batchSize }) {
     return order[status] > order[worst] ? status : worst;
   }, "green");
 
+  const badgeStyles = {
+    green:   "bg-[#EDF7F0] text-[#4A7C59] border border-[#4A7C59]",
+    yellow:  "bg-[#FEFCE8] text-[#B8860B] border border-[#B8860B]",
+    red:     "bg-[#FEF2F0] text-[#C0392B] border border-[#C0392B]",
+    unknown: "bg-[#F9F7F4] text-[#403D39] border border-[#E8E2D9]",
+  };
+
+  const badgeLabel = {
+    green:   "GO",
+    yellow:  "REVIEW",
+    red:     "NO GO",
+    unknown: "NO DATA",
+  };
+
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+    <div
+      className="bg-white rounded-xl border border-[#E8E2D9] p-5"
+      style={{ boxShadow: '0 1px 4px rgba(37,34,34,0.06)' }}
+    >
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-bold text-black">{modelName}</h3>
-        <div className={`px-3 py-1 rounded-full text-xs font-bold border-2 ${STATUS_COLORS[overallStatus]}`}>
-          {overallStatus === "green" ? "GO" : overallStatus === "red" ? "NO GO" : "REVIEW"}
+        <h3 className="text-base font-semibold text-[#252422]">{modelName}</h3>
+        <div className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${badgeStyles[overallStatus]}`}>
+          {badgeLabel[overallStatus]}
         </div>
       </div>
 
       {!dataPoint ? (
-        <div className="text-gray-400 text-sm">No data for this configuration</div>
+        <div className="text-[#403D39] text-sm py-4 text-center">
+          Uploaded model sweep does not include this configuration
+        </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2.5">
           {CUSTOMER_METRICS.map(metric => {
             const value = dataPoint[metric.key];
             const status = getGoNoGoStatus(metric.key, value);
@@ -68,7 +94,6 @@ function ModelCard({ modelName, dataPoint, batchSize }) {
                 key={metric.key}
                 metricKey={metric.key}
                 label={metric.label}
-                unit={metric.unit}
                 value={value}
                 status={status}
               />
@@ -77,7 +102,7 @@ function ModelCard({ modelName, dataPoint, batchSize }) {
         </div>
       )}
 
-      <div className="mt-3 text-xs text-gray-400">
+      <div className="mt-3 text-[11px] text-[#403D39]">
         Batch size: {batchSize} concurrent requests
       </div>
     </div>
@@ -92,7 +117,6 @@ export default function CustomerView({
   onProfileChange,
   onBatchSizeChange,
 }) {
-  // Get available batch sizes from first selected model
   const firstModel = selectedModels[0];
   const availableBatchSizes = firstModel
     ? getBatchSizes(groupedData, firstModel, selectedProfile)
@@ -101,7 +125,10 @@ export default function CustomerView({
   return (
     <div className="space-y-6">
       {/* Controls */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5 space-y-4">
+      <div
+        className="bg-white rounded-xl border border-[#E8E2D9] p-5 space-y-4"
+        style={{ boxShadow: '0 1px 4px rgba(37,34,34,0.06)' }}
+      >
         <ProfileSelector
           selectedProfile={selectedProfile}
           onProfileChange={(p) => {
@@ -110,7 +137,7 @@ export default function CustomerView({
           }}
         />
         <div className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-[#403D39]">
             Concurrent Users (Batch Size)
           </span>
           <div className="flex gap-2">
@@ -120,8 +147,8 @@ export default function CustomerView({
                 onClick={() => onBatchSizeChange(size)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                   selectedBatchSize === size
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-gray-600 border-gray-300 hover:border-black"
+                    ? "bg-[#252422] text-white border-[#252422]"
+                    : "bg-white text-[#403D39] border-[#E8E2D9] hover:border-[#252422]"
                 }`}
               >
                 {size}
@@ -130,12 +157,11 @@ export default function CustomerView({
           </div>
         </div>
 
-        {/* Profile summary */}
         {PROFILE_METADATA[selectedProfile] && (
-          <div className="bg-[#F5F0E8] rounded-lg p-3 text-sm text-gray-600">
+          <div className="bg-[#F4F1DE] rounded-lg p-3 text-sm text-[#403D39]">
             <span className="font-medium">Selected workload: </span>
             {PROFILE_METADATA[selectedProfile].description}
-            <span className="ml-2 text-xs text-gray-400">
+            <span className="ml-2 text-xs text-[#403D39]">
               ({PROFILE_METADATA[selectedProfile].inputLength.toLocaleString()} input tokens,{" "}
               {PROFILE_METADATA[selectedProfile].outputLength.toLocaleString()} output tokens,{" "}
               {PROFILE_METADATA[selectedProfile].cachePercent * 100}% cache)
@@ -146,7 +172,7 @@ export default function CustomerView({
 
       {/* Model Cards */}
       {selectedModels.length === 0 ? (
-        <div className="text-center text-gray-400 py-12">
+        <div className="text-center text-[#403D39] py-12">
           Select at least one model to compare
         </div>
       ) : (
@@ -171,17 +197,17 @@ export default function CustomerView({
       )}
 
       {/* Legend */}
-      <div className="flex gap-4 text-xs text-gray-500">
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+      <div className="flex gap-6 text-sm" style={{ color: '#403D39', fontWeight: 500 }}>
+        <div className="flex items-center gap-2">
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#4A7C59', display: 'inline-block', flexShrink: 0 }} />
           GO — meets performance threshold
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-yellow-500 inline-block" />
+        <div className="flex items-center gap-2">
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#B8860B', display: 'inline-block', flexShrink: 0 }} />
           REVIEW — borderline, discuss with engineer
         </div>
-        <div className="flex items-center gap-1">
-          <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+        <div className="flex items-center gap-2">
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#C0392B', display: 'inline-block', flexShrink: 0 }} />
           NO GO — does not meet threshold
         </div>
       </div>
