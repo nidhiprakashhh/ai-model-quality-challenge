@@ -109,3 +109,19 @@ python -m evalscope_ext.tools.mmmu_probe \
     --results-dir ./results_mmmu/ \
     --reference-dir ./Evals/MMMU/reviews/glm-4.5v-fp8
 ```
+
+## Extending to a New Benchmark
+
+The three pruned benchmarks share a single `UniversalPrunedAdapterMixin`
+([`evalscope_ext/pruning/universal_pruned_adapter.py`](./evalscope/evalscope_ext/pruning/universal_pruned_adapter.py))
+that owns all pruning scaffolding — sample filtering, stats reporting, evals
+directory resolution. Each benchmark adapter inherits the mixin and contributes
+only its `BenchmarkMeta` declaration and `_compute_pruned_indices` implementation
+(~30 lines). To add a new pruned benchmark:
+
+1. Create `benchmarks/<name>_pruned/<name>_pruned_adapter.py`
+2. Inherit `UniversalPrunedAdapterMixin`
+3. Declare `BenchmarkMeta`
+4. Implement `_compute_pruned_indices`
+
+Nothing else required.
