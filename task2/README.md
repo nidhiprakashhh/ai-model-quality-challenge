@@ -1,33 +1,60 @@
 # Task 2 — Benchmark Compression for a Real Customer
 
 ## Evalscope Fork
-**Repo:** https://github.com/nidhiprakashhh/evalscope/tree/749b4daaa3ebc50bdf24e8450505b31d64f30aac  
-**Pinned SHA:** `573aef0e01b1e3f12c3678d3b7b8d0a17a43b56f`
+**Repo:** https://github.com/nidhiprakashhh/evalscope/tree/d19e73f099031e11a944d6d8234f63d552a4205a 
+**Pinned SHA:** `d19e73f099031e11a944d6d8234f63d552a4205a`
 
 **Handouts:**
 - [handout_a.md](./handout_a.md) — "Why this works" (technical: algorithm rationale, LOO validation, Part B design, assumptions, what would change)
 - [handout_b.md](./handout_b.md) — "Why this matters" (sales/PM/customer: impact, how to run, what the probe tests vs random sampling)
 
-## The Approach
+## Overview
 
-The goal is not to approximate benchmark scores. It is to find the *smallest subset* that gives the same model ranking — and therefore the same go/no-go decision — as the full benchmark.
+The customer question is binary: is this model good enough? Full benchmarks answer that question, but at high cost — 315 coding problems and 100 long-context questions per model, every time a candidate changes.
 
-**Why correlation-stratified pruning, not the obvious alternatives:**
-- **Random sampling** fails because ~65% of LCB items and ~57% of AA-LCR items have zero variance across models (all three models give the same answer). Random sampling picks these proportionally — preserving the noise, not the signal.
-- **Top-k hardest or easiest** fails because it overfits to difficulty level, missing that the discriminating items are specifically the ones where *strong models pass and weak models fail* — which requires cross-model variance, not just per-item difficulty.
-- **Hand-picking** obviously doesn't generalize to a fourth unseen model.
+Per-item analysis of the shipped evaluation data shows ~65% of LCB items and ~57% of AA-LCR items have zero variance across all three models — every 
+model gives the same answer. These items don't help distinguish models. The pruner removes them and keeps only the items where models actually disagree, then selects within those by difficulty distribution and ranking correlation.
 
-The algorithm instead: stratifies by difficulty (so the pruned set is representative across easy/medium/hard), then within each bin selects the items with the highest cross-model variance *and* positive correlation with the full-set ranking (high variance alone can invert the ranking if a weak model happens to be strong on those specific items). For AA-LCR, a judge-noise correction step down-weights items where LLM-judge non-determinism dominates the cross-model signal. Full algorithm walk-through in [handout_a.md](./handout_a.md).
+## Approach
+
+The key finding from the shipped evaluation data was that computed per-item score variance across the three candidate models (gpt-oss-120b, kimi-k2.5, minimax-m2.5) shows ~65% of LCB items and ~57% of AA-LCR items have zero variance and all three models give the same answer. 
+These items are removed first.
+
+Among the remaining discriminating items, correlation-stratified pruning selects samples by:
+- **Difficulty stratification** — splits items into easy/medium/hard bins so the pruned 
+  set stays representative across the full capability range, not just the middle
+- **Discrimination scoring** — within each bin, ranks items by how strongly models disagree, 
+  filtered to keep only items where that disagreement correctly reflects the full-set ranking 
+  (high variance alone can invert rankings if a weaker model happens to excel on those items)
+- **Judge-noise correction** (AA-LCR only) — down-weights items where score differences 
+  likely reflect LLM judge inconsistency rather than genuine model capability differences
+
+Full technical rationale and LOO validation: [handout_a.md](./handout_a.md)
 
 ## Setup
 
+**Prerequisites:** Python 3.10+, pip
+
 ```bash
-git clone --recurse-submodules <repo_url>
+# Clone with submodules (evalscope extension lives at task2/evalscope)
+git clone --recurse-submodules https://github.com/nidhiprakashhh/ai-model-quality-challenge-implementation.git
+cd ai-model-quality-challenge-implementation
+
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# Install evalscope with all dependencies
 cd task2/evalscope
 pip install -e ".[all]"
 pip install numpy scipy Pillow datasets
 ```
 
+Set your API key before running any eval commands:
+
+```bash
+export CEREBRAS_API_KEY=your_key_here
+```
 > **Important:** Use `--recurse-submodules` when cloning. The evalscope fork lives as a git submodule at `task2/evalscope`.
 
 ## Run Contract
@@ -52,6 +79,33 @@ python -m evalscope_ext.tools.compare_runs \
 evalscope eval --model <model> --datasets aa_lcr_pruned \
     --dataset-args '{"pruning_strategy": "correlation_stratified", "prune_ratio": 0.2}' \
     --output ./results_pruned_aalcr/
+```
+
+### Example: Cerebras Cloud API
+
+```bash
+# Step 1 — Full benchmark
+evalscope eval \
+  --model gpt-oss-120b \
+  --eval-type openai_api \
+  --api-url https://api.cerebras.ai/v1 \
+  --api-key $CEREBRAS_API_KEY \
+  --datasets live_code_bench \
+  --output ./results_full/
+
+# Step 2 — Pruned benchmark
+evalscope eval \
+  --model gpt-oss-120b \
+  --eval-type openai_api \
+  --api-url https://api.cerebras.ai/v1 \
+  --api-key $CEREBRAS_API_KEY \
+  --datasets live_code_bench_pruned \
+  --dataset-args '{"pruning_strategy": "correlation_stratified", "prune_ratio": 0.1}' \
+  --output ./results_pruned/
+
+# Step 3 — Compare
+python -m evalscope_ext.tools.compare_runs \
+  --full ./results_full/ --pruned ./results_pruned/
 ```
 
 ## Extension Structure
@@ -80,7 +134,6 @@ evalscope_ext/
 | AA-LCR | 100 | 20 | 20.0% | ✓ | 0.667 |
 
 Strongest model correctly identified in all leave-one-out rounds on both benchmarks.  
-Verified end-to-end with `gpt-oss-120b` on Cerebras Cloud API.
 
 ### Part B: MMMU Encoder Stress Probe
 
@@ -115,13 +168,12 @@ python -m evalscope_ext.tools.mmmu_probe \
 The three pruned benchmarks share a single `UniversalPrunedAdapterMixin`
 ([`evalscope_ext/pruning/universal_pruned_adapter.py`](./evalscope/evalscope_ext/pruning/universal_pruned_adapter.py))
 that owns all pruning scaffolding — sample filtering, stats reporting, evals
-directory resolution. Each benchmark adapter inherits the mixin and contributes
-only its `BenchmarkMeta` declaration and `_compute_pruned_indices` implementation
-(~30 lines). To add a new pruned benchmark:
+directory resolution. Each benchmark adapter inherits the mixin and contributes only its `BenchmarkMeta` declaration and `_compute_pruned_indices` implementation. To add a new pruned benchmark:
 
 1. Create `benchmarks/<name>_pruned/<name>_pruned_adapter.py`
 2. Inherit `UniversalPrunedAdapterMixin`
-3. Declare `BenchmarkMeta`
-4. Implement `_compute_pruned_indices`
+3. Declare `BenchmarkMeta` with dataset ID, subsets, and pruning defaults in `extra_params`
+4. Implement `_compute_pruned_indices` — load scores from Evals/, run the pruner, return selected indices
+5. Register the module in `evalscope/benchmarks/__init__.py`
 
 Nothing else required.

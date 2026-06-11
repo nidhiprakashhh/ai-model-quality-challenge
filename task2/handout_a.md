@@ -1,93 +1,82 @@
 # Handout A — Why This Works
-*Technical audience | 1 page*
 
-## The Problem I Was Solving
+## The Problem
 
-The customer needs one answer: is this model good enough? Full benchmarks give that answer but at high cost — 315 coding questions plus 100 long-context questions per model, every time a candidate changes. The goal is not to approximate scores. It is to find the smallest subset that gives the same ranking — and therefore the same go/no-go decision — as the full benchmark.
+Running a full benchmark suite against every candidate model is expensive in API cost, time, and engineering overhead. The question is whether that cost is necessary, or whether most of it is noise.
 
-The shipped data makes this tractable. Computing per-sample score variance across the three models reveals that 64.8% of LCB items and 57% of AA-LCR items have zero variance — all three models give the same answer. These items carry no information about which model is better. They are the noise. The pruner removes them and keeps only the items where models actually disagree.
+Per-item variance analysis across the three shipped models answers this directly: 64.8% of LCB items and 57% of AA-LCR items have zero variance, meaning every model scores identically on them regardless of capability. An item where all models agree tells you nothing about which model is better for your workload. These items consume evaluation budget without contributing any ranking signal. Removing them is not an approximation, it is noise reduction. The goal is to find the smallest subset that preserves the ranking and therefore the deployment decision, at a fraction of the cost.
 
-## Algorithm: Correlation-Stratified Pruning
+## Solution Approach: Correlation-Stratified Pruning
 
-The algorithm has four steps, each solving a specific problem.
+Four steps, each solving a specific failure mode:
 
-**Step 1 — Stratify by difficulty.** Items are sorted by their mean score across all models and split into easy (top 20%), medium (middle 50%), and hard (bottom 30%) bins. This matters because a purely discrimination-based selector would tend to pick medium-difficulty items and ignore easy and hard ones — but a pruned set that only contains medium items would fail to rank models on the extremes of their capability range. Stratification ensures the pruned set is representative across difficulty levels.
+**Difficulty stratification** — Items are sorted by mean score across all three models, where a mean of 1.0 means every model answered correctly and 0.0 means none did. This distribution is split into easy (top 20%), medium (middle 50%), and hard (bottom 30%) bins. A discrimination-only selector naturally over-indexes on medium difficulty items since they have the highest variance, ignoring the extremes where capability differences also matter. Stratifying first ensures the pruned set covers the full capability range, giving a more reliable signal for models at either end of the performance spectrum.
 
-**Step 2 — Score by discrimination.** Within each bin, items are ranked by cross-model score variance. An item with high variance means models disagree strongly on it — exactly the signal needed to distinguish better from worse models. An item where all models score 0.8 tells you nothing about which model is best.
+***Discrimination scoring** — Within each bin, items are ranked by cross-model score variance. High variance means models genuinely disagree on that item, which is the only signal that separates better from worse. Items where all models score similarly, even if not identical, 
+are ranked lower and less likely to be selected. This is the core selection criterion because ranking preservation depends entirely on items where model differences are visible.
 
-**Step 3 — Filter by ranking correlation.** High variance alone is not sufficient. An item where the weaker model consistently outperforms the stronger is discriminating but misleading — it would invert the ranking rather than confirm it. Items are filtered to keep only those whose per-model scores correlate positively with the full-set ranking. This is the step that prevents the pruned set from accidentally reversing the correct order.
+**Ranking correlation filter** — High variance alone is not sufficient. A weaker model can outperform a stronger one on specific item types due to training data distribution, which would make those items discriminating but misleading. Items are filtered to keep only those 
+where per-model scores correlate positively with the full-set ranking, ensuring the pruned set confirms the correct order rather than inverting it.
 
-**Step 4 — Apply judge noise correction (AA-LCR only).** AA-LCR uses an LLM judge to score responses, which introduces non-determinism. For each item, cross-judge score variance is estimated and used to down-weight items where judge noise dominates cross-model signal. This makes the pruned AA-LCR set more reliable as a ranking signal despite the noisy grading.
+**Judge-noise correction (AA-LCR only)** — AA-LCR responses are graded by an LLM judge, which introduces non-determinism independent of model capability. Each item has multiple judge evaluations, and variance across those repeated scores estimates how inconsistent the grading is for that specific question. Items with high judge variance are down-weighted so the pruner selects on genuine model capability differences rather than grading noise. Without this correction, items that look discriminating may simply be ones where the judge is unreliable, producing a ranking signal that reflects evaluation noise rather than model quality.
 
-## Results and Defense
+## How Much Was Pruned and Why It Is Sufficient
 
-| Benchmark | Full | Pruned | Retention | Ranking Preserved |
-|-----------|------|--------|-----------|-------------------|
-| LCB v5 | 315 | 30 | 9.5% | ✓ |
-| AA-LCR | 100 | 20 | 20.0% | ✓ |
+| Benchmark | Full → Pruned | Retention | Top Model Correct | LOO Mean Spearman |
+|---|---|---|---|---|
+| LCB v5 | 315 → 30 | 9.5% | ✓ all rounds | 0.667 |
+| AA-LCR | 100 → 20 | 20.0% | ✓ all rounds | 0.667 |
 
-**Leave-one-out validation** proves the pruner generalizes to models it has not seen. Each model is held out in turn. Samples are selected using only the remaining two models. The held-out model is then scored on those samples and its ranking verified.
+Spearman correlation here measures how well the pruned set preserves the full model ordering, where 1.0 is a perfect match. 
 
-```
-LCB Leave-One-Out Results:
-Hold out minimax-m2.5:  Spearman r=0.500 (nearest accuracy gap: 1.0%)
-Hold out kimi-k2.5:     Spearman r=1.000 (nearest accuracy gap: 1.0%)
-Hold out gpt-oss-120b:  Spearman r=0.500 (nearest accuracy gap: 13.7%)
-Mean Spearman r: 0.667
-Strongest model (gpt-oss-120b) ranked first in all rounds.
+The deployment decision depends on model ranking preservation, not exact scores. The pruned set correctly identifies the strongest model for any candidate it has not seen before. **Leave-one-out (LOO)** validation tests exactly this: each model is held out, the pruner selects samples using only the remaining two, and the held-out model's ranking is verified against the full benchmark. The strongest model is correctly identified in every round on both benchmarks.
 
-AA-LCR Leave-One-Out Results:
-Hold out kimi-k2.5:     Spearman r=0.500 (nearest accuracy gap: 2.0%)
-Hold out gpt-oss-120b:  Spearman r=0.500 (nearest accuracy gap: 16.0%)
-Hold out minimax-m2.5:  Spearman r=1.000 (nearest accuracy gap: 2.0%)
-Mean Spearman r: 0.667
-Strongest model (kimi-k2.5) ranked first in all rounds.
-```
-
-Spearman r=0.5 rounds occur only when the two models being compared have accuracy scores within 1-2 percentage points of each other on the full benchmark — for example, kimi-k2.5 at 62.9% and minimax-m2.5 at 61.9% on LCB. Reliably separating models that close would require significantly more samples regardless of which selection method is used. The pruner correctly identifies the models that matter for the deployment decision.
-
-Selection is based on structural sample properties — discrimination, difficulty distribution, ranking correlation — not on model-specific behavior. A fourth unseen model will be correctly ranked as long as its performance gap with existing models is meaningful.
+The cases where Spearman r=0.5 occur involve the two closest models — kimi-k2.5 at 62.9% and minimax-m2.5 at 61.9% on LCB, and 66.0% vs 64.0% on AA-LCR — a gap of 1.0 and 2.0 percentage points respectively on the full benchmark. Its hard to reliably separate models that close regardless of selection method. 
+The clear leader in each benchmark is never misidentified: gpt-oss-120b leads by 13.6 percentage points on LCB, and kimi-k2.5 leads by 18.0 percentage points on AA-LCR. The full 315-item LCB set itself produces no meaningful separation at that gap.
+ The pruned set correctly identifies what matters for deployment: which model is strongest, every time.
 
 ## Part B: MMMU Encoder Stress Probe
 
-**Design rationale:** The customer question is "is this model's image encoder good enough?" Overall MMMU accuracy does not answer this cleanly — it mixes encoder quality with domain knowledge and reasoning ability. A model can score 70% on MMMU while its encoder is degraded, simply because many MMMU questions can be partially answered from text context alone. The probe needs to select questions where the image is genuinely required.
+Overall MMMU accuracy conflates encoder quality with domain knowledge and reasoning ability. A model can score well while its encoder is degraded because many questions are partially answerable from text context alone. The probe selects questions where the image is genuinely required.
 
-**Strategy — Encoder Stress Coverage Pruning:**
+The understanding is that encoder degradation here refers not to degradation of the image itself, but to a reduction in the encoder's performance on complex visual content that cannot be resolved from surrounding text context alone — table cells, chart axes, diagram structure, fine-grained scientific detail.
 
-The probe set is constructed from the MMMU validation split — the same 900-sample split (30 questions × 30 subjects) used for the reference model evaluation. Selection is based entirely on image properties, with zero model outputs used. This ensures the probe generalizes to any future model.
+**Selection**
 
-For each image, four lightweight pixel-level features are computed using numpy (no external CV libraries):
-- **Edge density** — mean Sobel gradient magnitude, normalized. High edge density indicates structural complexity: diagrams, circuit schematics, annotated charts.
-- **Grayscale entropy** — information density of the pixel distribution. Dense text regions and complex scientific figures score high.
-- **Layout complexity** — standard deviation of regional means across a 3×3 grid. High complexity indicates spatially varied content rather than uniform backgrounds.
-- **Text likelihood** — fraction of pixels at extreme intensity values (near black or near white). Proxy for text-heavy images requiring OCR fidelity.
+Four pixel-level features are computed per image: edge density (structural complexity), grayscale entropy (information density), layout complexity (spatial variation across regions), and text likelihood (proxy for OCR-heavy content). 
+A 2-signal consensus rule qualifies an image as encoder-stressful only if at least 2 of 4 features exceed their thresholds. 
+Zero model outputs are used in selection. The probe is built entirely from image analysis, meaning the same 150-sample set is valid for any candidate model without running any reference model first. The reference model is only needed to establish the baseline accuracy scores used in the verdict step.
 
-A 2-signal consensus rule is applied: an image qualifies as encoder-stressful only if at least 2 of 4 features exceed their thresholds. This prevents noisy photographs from being mistakenly selected as complex.
+The five stress categories each map to a distinct encoder failure mode: tables, dense text, charts, 
+diagrams , and fine-grained
 
-Images are assigned to 5 encoder stress categories via MMMU's `img_type` metadata: `tables`, `dense_text`, `charts`, `diagrams`, `fine_grained`. Within each category, the 30 highest-stress images by composite score are selected, giving 150 total.
+**Measurement and verdict**
 
-**Why these categories stress image encoders specifically:**
-- Tables require the encoder to localize specific cells and extract precise values — failure shows up as wrong row/column reads
-- Dense text requires OCR-level fidelity — encoder degradation causes character misreads
-- Charts require geometric precision to read axis values and data point positions
-- Diagrams require preserving topological structure — node connectivity, component labels
-- Fine-grained images (medical scans, microscopy, molecular structures) require high-frequency detail preservation
+Candidate model accuracy per category is compared against glm-4.5v-fp8 reference scores derived from the shipped Evals/MMMU data. Rather than applying arbitrary thresholds, the probe measures degradation relative to a known baseline — a delta exceeding 15% flags a category worth investigating before committing to full evaluation.
 
-**Working implementation:** The probe selection pipeline is fully implemented and tested. Running `python -m evalscope_ext.tools.mmmu_probe --mode select --target-size 150` downloads the full MMMU validation split from HuggingFace, computes stress features, and outputs a 150-sample probe JSON. The report mode (`--mode report`) computes per-category accuracy against a reference model and produces a go/no-go verdict based on accuracy delta vs reference. Verified against glm-4.5v-fp8 reference scores from the shipped Evals data.
+| Category | Reference (glm-4.5v-fp8) | Example model | Delta | Verdict |
+|---|---|---|---|---|
+| dense_text | 0.850 | 0.820 | -3.5% | PASS |
+| tables | 0.739 | 0.700 | -5.3% | PASS |
+| charts | 0.714 | 0.600 | -16.0% | FAIL |
+| diagrams | 0.600 | 0.540 | -10.0% | REVIEW |
+| fine_grained | 0.577 | 0.450 | -22.0% | FAIL |
 
-**Measurement approach:** Rather than applying arbitrary accuracy thresholds, the probe compares candidate model scores against the reference model per category. A delta more than 15% below reference flags encoder degradation worth investigating before full MMMU evaluation.
+Delta thresholds: within 5% = PASS, within 15% = REVIEW, exceeding 15% = FAIL.
+
+The probe currently defaults to the MMMU validation split because it is the split for which reference scores are available from the shipped Evals/MMMU data. The probe supports any HuggingFace MMMU split via `--hf-split` — passing `--hf-split test` expands selection to the full ~10.5K test split, which works cleanly since selection is purely image-based and requires no answer data. Report mode against the test split would require separately generated reference scores for that split.
 
 ## Assumptions
 
-- Model accuracy scores are stable at temperature=0 — no meaningful sampling variance
-- LLM judge noise in AA-LCR is approximately uniform across questions, so noise correction can be applied as a multiplicative weight
-- The MMMU validation split (30 balanced samples per subject across all 30 subjects) is representative enough of the full distribution for probe construction
-- Encoder stress categories most relevant to this customer's workload center on technical content — documents, charts, scientific diagrams — rather than aesthetic imagery
+- Accuracy scores are stable at temperature=0.
+- LLM judge noise in AA-LCR is approximately uniform across questions.
+- Difficulty is proxied by mean score across models — an item where all three models score 1.0 is treated as easy, 0.0 as hard.
+- The difficulty bin allocation of 20/50/30 across easy/medium/hard mirrors the approximate natural distribution of the benchmarks rather than being derived empirically.
 
-## What Would Change With More Resources
+## What Would Change
 
-**(a) More shipped data or more models:** Leave-one-out validation would be more reliable with 5+ models. The noise floor for ranking separation could be estimated empirically rather than inferred from the 3-model dataset.
+**(a) More models:** The pruner is validated on 3 models from a similar generation. More models, especially architecturally diverse ones, would test whether the selected items genuinely capture capability differences or just happen to work for this particular set.
 
-**(b) Live model endpoint during development:** Perturbation testing would become feasible — submitting the same question with progressively degraded images to measure accuracy drop curves. This would give a more direct encoder quality signal than category-level accuracy comparison.
+**(b) Live model endpoint:** With a live endpoint, you query a model on the customer's actual inputs, generate scores on the fly, run the same selection logic, and produce a pruned set from content that actually resembles their deployment. Same methodology, customer's data.
 
-**(c) More time:** The stress feature computation could incorporate OCR density estimation (actual character detection rather than intensity thresholding) and CLIP-based clustering to improve category precision, particularly for borderline image types.
+**(c) More time:** The 15% FAIL threshold in report mode and the stress feature thresholds in probe selection were set based on judgment. A production version would calibrate these empirically from observed accuracy distributions across more models rather than treating them as fixed starting points.
